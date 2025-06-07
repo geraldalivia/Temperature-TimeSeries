@@ -56,6 +56,7 @@ Peramalan suhu berbasis deret waktu adalah landasan bagi kontrol suhu dan efisie
 Dataset dihasilkan dengan bantuan data Perangkat IOT yang mewakili nilai suhu udara ruangan terhadap waktu. Dataset ini bersifat time-series dan memiliki fitur sebagai berikut:
 
 Fitur:
+- `Unamed: 0` : hanya index nomor saja.
 - `Hourly _Temp` : berisi nilai rata-rata Suhu Udara Pasokan dalam derajat celcius per jam,
 - `Datetime` : menunjukkan tanggal dan Jam perekaman data
 
@@ -64,7 +65,7 @@ EDA (Exploratory Data Analysis) telah dilakukan untuk melihat beberapa informasi
 - Pengecekan nilai duplikat.
 - Distribusi suhu
 
-Dataset ini terdiri atas 7056 baris dan 3 kolom.
+Dataset ini terdiri atas 7056 baris dan 3 kolom. Dengan tidak adanya nilai yang hilang (no missing value) dan tidak ada data yang terduplikasi (no duplicated value)
 
 Sumber dataset : [Time Series Room Temperature Data](https://www.kaggle.com/datasets/vitthalmadane/ts-temp-1)
 
@@ -88,12 +89,22 @@ Sumber dataset : [Time Series Room Temperature Data](https://www.kaggle.com/data
 Dalam proyek ini, dua model machine learning digunakan untuk melakukan prediksi suhu: **Long Short-Term Memory (LSTM)** dan **XGBoost**. Keduanya memiliki pendekatan yang berbeda dalam menangani deret waktu, dan perbandingan performa mereka akan memberikan wawasan berharga.
 
 ### 📌 LSTM (Long Short-Term Memory)
-LSTM adalah jenis Recurrent Neural Network (RNN) yang dirancang khusus untuk mengatasi masalah vanishing/exploding gradient dan menangani dependensi jangka panjang dalam data sekuensial. Model ini dibangun untuk prediksi deret waktu, dalam hal ini prediksi nilai suhu berikutnya berdasarkan data sebelumnya. 
+
+LSTM adalah jenis Recurrent Neural Network (RNN) yang dirancang khusus untuk mengatasi masalah vanishing/exploding gradient (gradien menghilang) dan menangani dependensi jangka panjang dalam data sekuensial. Unit dasar LSTM memiliki tiga gerbang (gates) utama dan sebuah status sel (cell state), yang secara kolektif mengatur informasi yang masuk, keluar, dan disimpan dalam sel. Ini memungkinkan LSTM untuk mengingat informasi penting dan melupakan informasi yang tidak relevan selama periode waktu yang panjang. Dalam projek ini, model dibangun untuk prediksi deret waktu, yang ingin diprediksi adalah nilai suhu berikutnya berdasarkan data sebelumnya. 
+
+Quick Workflow of LSTM
+> Pada proyek prediksi suhu, setiap kali LSTM memproses satu timestep dalam sequence, LSTM akan:
+1. Forget Gate akan menentukan berapa banyak memori suhu lama yang relevan yang harus dipertahankan.
+2. Input Gate memutuskan berapa banyak informasi suhu baru dari timestep saat ini yang harus ditambahkan ke memori.
+3. State Cell diperbarui berdasarkan keputusan gerbang lupa dan input.
+4. Output Gate menggunakan status sel yang diperbarui untuk menghasilkan hidden state baru, yang kemudian akan menjadi input untuk timestep berikutnya dan juga dapat diteruskan ke lapisan Dense (lapisan keluaran) untuk menghasilkan prediksi suhu aktual.
+
 ```
 model = Sequential()
 model.add(LSTM(units=50, activation='relu', input_shape=(seq_length, 1)))
 model.add(Dense(units=1))
 ```
+
 Beberapa catatan penting terkait code di atas yaitu:
 - Sequential() : Membuat model sekuensial yang lapisannya ditambahkan satu per satu secara berurutan.
 - model.add(LSTM(...)) : Menambahkan lapisan LSTM (Long Short-Term Memory) ke model.
@@ -115,12 +126,24 @@ Beberapa catatan penting terkait code di atas yaitu:
 - Kurang interpretatif: Sulit untuk memahami "mengapa" model membuat prediksi tertentu.
 - Daya komputasi tinggi: Membutuhkan GPU untuk pelatihan yang efisien pada model yang lebih besar.
 
+
 ### 📌 XGBoost (Extreme Gradient Boosting)
-XGBoost adalah algoritma boosting berbasis pohon keputusan yang sangat efisien dan kuat, sering kali memberikan performa tinggi dalam berbagai kompetisi machine learning. Meskipun bukan model deret waktu intrinsik, XGBoost dapat digunakan secara efektif dengan deret waktu melalui rekayasa fitur yang tepat.
+
+XGBoost adalah algoritma boosting berbasis pohon keputusan yang sangat efisien dan kuat. XGBoost bekerja berdasarkan kerangka kerja Gradient Boosting. Model ini bekerja dengan membangun serangkaian pohon keputusan secara sekuensial, di mana setiap pohon baru belajar untuk memperbaiki kesalahan (residu) yang dibuat oleh kombinasi semua pohon sebelumnya. Proses "belajar dari kesalahan" ini, dikombinasikan dengan teknik regularisasi yang canggih, memungkinkan XGBoost untuk mencapai akurasi prediksi yang sangat tinggi dan kinerja yang efisien, menjadikannya pilihan populer untuk berbagai masalah regresi dan klasifikasi pada data tabular. Untuk peramalan deret waktu, XGBoost memerlukan fitur lagged atau temporal yang direkayasa secara eksplisit sebagai input.
+
+Quick Workflow of XGBoost
+> Dalam projek prediksi suhu ini, perlu melakukan rekayasa fitur lagged/input, misalnya, seq_length suhu sebelumnya menjadi input model.
+1. Setiap pohon keputusan di XGBoost akan belajar hubungan antara fitur-fitur lagged yang didapat dari input model sebelumnya. Misalnya suhu 1 jam yang lalu, 2 jam yang lalu, dan seterusnya, serta kesalahan prediksi suhu.
+2. Pohon pertama mungkin membuat prediksi suhu yang belum baik atau kasar.
+3. Pohon kedua akan belajar untuk memperbaiki di mana pohon pertama yang salah.
+4. Pohon ketiga akan memperbaiki kesalahan gabungan dari dua pohon pertama, dan seterusnya.
+5. Setiap pohon baru akan belajar untuk mengoreksi kesalahan dari model sebelumnya. Hingga akhirnya memiliki prediksi yang lebih baik karena pohon baru telah mencoba untuk mengurangi kesalahan dari prediksi sebelumnya.
+   
 ```
 xgb_model = XGBRegressor(n_estimators=100, learning_rate=0.1, random_state=42, n_jobs=-1)
 xgb_model.fit(X_train_xgb, y_train_xgb)
 ```
+
 Beberapa catatan penting terkait code di atas yaitu:
 - XGBRegressor(): library xgboost.
 - n_estimators=100: hyperparameter yang menentukan jumlah pohon keputusan (decision trees) yang akan dibangun oleh algoritma boosting.
